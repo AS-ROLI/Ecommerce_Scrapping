@@ -9,6 +9,12 @@ import os
 import time
 from selenium import webdriver 
 from selenium.webdriver.common.by import By # This needs to be used 
+import ssl
+from urllib.request import urlopen
+import logging
+from pymongo.mongo_client import MongoClient
+from pymongo.server_api import ServerApi
+
 
 application = Flask(__name__) # initializing a flask app
 app=application
@@ -23,24 +29,37 @@ def homePage():
 def index():
     if request.method == 'POST':
         try:
-            DRIVER_PATH = r"chromedriver.exe"
+            chromedriver_path = r"C:\Program Files (x86)\chromedriver.exe"
+            chrome_options = webdriver.ChromeOptions()
+
 
             # Initialize the Chrome WebDriver
-            driver = webdriver.Chrome(DRIVER_PATH)
+            driver = webdriver.Chrome(options=chrome_options)
             searchString = request.form['content'].replace(" ","")
             flipkart_url = "https://www.flipkart.com/search?q=" + searchString
 
-            driver.get(flipkart_url)
-            flipkartPage = driver.page_source
-            flipkart_html = bs(flipkartPage, "html.parser")
+            #driver.get(flipkart_url)
+            # flipkartPage = driver.page_source
+            context = ssl._create_unverified_context()
+            urlclient = uReq(flipkart_url,context=context)
+
+            flipkart_page = urlclient.read()
+            flipkart_html = bs(flipkart_page, "html.parser")
+            
             bigboxes = flipkart_html.findAll("div", {"class": "_1AtVbE col-12-12"})
             del bigboxes[0:3]
             box = bigboxes[0]
             productLink = "https://www.flipkart.com" + box.div.div.div.a['href']
+            
+            
+            
             driver.get(productLink)
             prodRes= driver.page_source
             driver.quit()
             prod_html = bs(prodRes, "html.parser")
+            
+            
+            
             commentboxes = prod_html.find_all('div', {'class': "_16PBlm"})
 
             filename = searchString + ".csv"
@@ -90,10 +109,30 @@ def index():
                 writer.writerows(reviews)
 
                
-            client = pymongo.MongoClient("mongodb+srv://master:master123@atlascluster.w0iwrbk.mongodb.net/?retryWrites=true&w=majority")
-            db = client['flipkart_scrap1']
-            review_col = db['review_scrap_data']
-            review_col.insert_many(reviews)
+            
+
+
+                uri = "mongodb+srv://pwskills:pwskills@cluster0.3smlccy.mongodb.net/?retryWrites=true&w=majority"
+
+                # Create a new client and connect to the server
+                client = MongoClient(uri, server_api=ServerApi('1'))
+                # Creating database
+                db = client['review_scrap']
+
+                # Creating collection in database
+                review_col = db['review_scrap_data']
+                #By the below code we will insert the review list
+                review_col.insert_many(reviews)
+
+
+                # Send a ping to confirm a successful connection
+                try:
+                 client.admin.command('ping')
+                 print("Pinged your deployment. You successfully connected to MongoDB!")
+                except Exception as e:
+                 print(e)
+            
+            
             return render_template('results.html', reviews=reviews[0:(len(reviews)-1)])
         except Exception as e:
             print('The Exception message is: ',e)
